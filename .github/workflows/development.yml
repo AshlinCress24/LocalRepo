@@ -31,6 +31,9 @@ jobs:
           echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
           echo "GITHUB_SHA: ${GITHUB_SHA}"
           echo "GITHUB_REF: ${GITHUB_REF}"
+          echo "ORCH_TENANT: ${{ secrets.ORCH_TENANT }}"
+          echo "ORCH_CLIENT_ID: ${{ secrets.ORCH_CLIENT_ID }}"
+          echo "ORCH_CLIENT_SECRET: ${{ secrets.ORCH_CLIENT_SECRET }}"
   cleaner:
     runs-on: ubuntu-latest
     steps:
@@ -69,10 +72,6 @@ jobs:
 
       - name: Publish Nuget Package to DEV
         shell: pwsh
-        env:
-          ORCH_TENANT: ${{ secrets.ORCH_TENANT }}
-          ORCH_CLIENT_ID: ${{ secrets.ORCH_CLIENT_ID }}
-          ORCH_CLIENT_SECRET: ${{ secrets.ORCH_CLIENT_SECRET }}
         run: |
           ${{ github.workspace }}\scripts\UiPathDeploy.ps1 `
             -package_path "${{ github.workspace }}\package" `
