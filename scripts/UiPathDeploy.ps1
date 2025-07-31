@@ -3,7 +3,7 @@
     Deploy NuGet package files to orchestrator
 
 .DESCRIPTION
-    This script is to deploy NuGet package files (*.nupkg) to Cloud or On-Prem orchestrator using Client ID and Client Secret authentication.
+    This script deploys NuGet package files (*.nupkg) to Cloud or On-Prem orchestrator using Client ID and Client Secret authentication.
 
 .PARAMETER packages_path
     Required. The path to a folder containing packages, or to a package file.
@@ -24,181 +24,127 @@
     Required. The Client Secret from your Orchestrator External Application.
 
 .PARAMETER folder_organization_unit
-    The Orchestrator folder (organization unit). This is typically the modern folder path/name.
+    The Orchestrator folder (modern folder path/name).
 
 .PARAMETER environment_list
-    For classic folders, the comma-separated list of environments to deploy the package to. If the environment does not belong to the default folder (organization unit) it must be prefixed with the folder name, e.g. AccountingTeam\TestEnvironment. (Less common with modern folders)
+    For classic folders: comma-separated list of environments.
 
 .PARAMETER language
     The orchestrator language.
 
 .PARAMETER disableTelemetry
     Disable telemetry data.
-
-.EXAMPLE
-SYNTAX
-    . '\UiPathDeploy.ps1' <packages_path> <orchestrator_url> <organization_name> <orchestrator_tenant> -client_id <client_id> -client_secret <client_secret> [-folder_organization_unit <folder_organization_unit>] [-environment_list <environment_list>] [-language <language>]
-Examples:
-    . '\UiPathDeploy.ps1' "C:\UiPath\Project\Package.1.0.nupkg" "https://cloud.uipath.com" "myorg" "DefaultTenant" -client_id "your_client_id" -client_secret "your_client_secret"
-    . '\UiPathDeploy.ps1' "C:\UiPath\Project\Package.1.0.nupkg" "https://cloud.uipath.com" "myorg" "DefaultTenant" -client_id "your_client_id" -client_secret "your_client_secret" -folder_organization_unit "MyProjectFolder"
 #>
-Param (
-    #Required
-    [string] $packages_path = "", # Required. The path to a folder containing packages, or to a package file.
-    [string] $orchestrator_url = "", # Required. The base URL of the Orchestrator instance (e.g., https://cloud.uipath.com).
-    [string] $organization_name = "", # Required. The UiPath Cloud organization name.
-    [string] $orchestrator_tenant = "", # Required. The tenant of the Orchestrator instance.
-    [string] $client_id = "", # Required. The Client ID from External Application.
-    [string] $client_secret = "", # Required. The Client Secret from External Application.
 
-    [string] $folder_organization_unit = "", # The Orchestrator folder (organization unit).
-    [string] $language = "", # The orchestrator language.
-    [string] $environment_list = "", # The comma-separated list of environments (for classic folders).
-    [string] $disableTelemetry = "" # Disable telemetry data.
+Param (
+    [string] $packages_path = $env:UIPATH_PACKAGE_PATH,
+    [string] $orchestrator_url = $env:UIPATH_ORCH_URL,
+    [string] $organization_name = $env:UIPATH_ORCH_ORG_NAME,
+    [string] $orchestrator_tenant = $env:UIPATH_ORCH_TENANT_NAME,
+    [string] $client_id = $env:UIPATH_CLIENT_ID,
+    [string] $client_secret = $env:UIPATH_CLIENT_SECRET,
+    [string] $folder_organization_unit = $env:UIPATH_FOLDER_NAME,
+    [string] $language = "",
+    [string] $environment_list = "",
+    [string] $disableTelemetry = ""
 )
 
-function WriteLog
-{
+function WriteLog {
     Param ($message, [switch] $err)
-
-    $now = Get-Date -Format "G"
-    $line = "$now`t$message"
-    $line | Add-Content $debugLog -Encoding UTF8
-    if ($err)
-    {
-        Write-Host $line -ForegroundColor red
+    $now = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    if ($err) {
+        Write-Host "$now - ❌ $message" -ForegroundColor Red
     } else {
-        Write-Host $line
+        Write-Host "$now - 🔎 $message"
     }
 }
 
-$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$debugLog = "$scriptPath\orchestrator-package-deploy.log"
+WriteLog "Parameters received:"
+WriteLog "package_path: $packages_path"
+WriteLog "orchestrator_url: $orchestrator_url"
+WriteLog "organization_name: $organization_name"
+WriteLog "orchestrator_tenant: $orchestrator_tenant"
+WriteLog "client_id: $client_id"
+WriteLog "client_secret: [hidden]"
+WriteLog "folder_organization_unit: $folder_organization_unit"
 
-# --- REMOVING MANUAL CLI DOWNLOAD ---
-# The UiPath/setup-uipath-cli@v1 GitHub Action will handle this.
-# Assuming 'uipath' command is available in PATH due to the GitHub Action.
-$uipathCLI = "uipath" # Changed to just 'uipath' as it should be in PATH
-WriteLog "-----------------------------------------------------------------------------"
-WriteLog "uipath CLI will be invoked from PATH."
-
-# --- Parameter Validation ---
 if (
-    $packages_path -eq "" -or
-    $orchestrator_url -eq "" -or
-    $organization_name -eq "" -or
-    $orchestrator_tenant -eq "" -or
-    $client_id -eq "" -or
-    $client_secret -eq ""
+    [string]::IsNullOrWhiteSpace($packages_path) -or
+    [string]::IsNullOrWhiteSpace($orchestrator_url) -or
+    [string]::IsNullOrWhiteSpace($organization_name) -or
+    [string]::IsNullOrWhiteSpace($orchestrator_tenant) -or
+    [string]::IsNullOrWhiteSpace($client_id) -or
+    [string]::IsNullOrWhiteSpace($client_secret)
 ) {
-    WriteLog "Error: Missing required parameters for Client ID/Secret authentication." -err
-    WriteLog "Required parameters: packages_path, orchestrator_url, organization_name, orchestrator_tenant, client_id, client_secret." -err
-    exit 1
+    WriteLog "❌ Required parameters missing. Please ensure all are provided." -err
+    Exit 1
 }
 
-# --- Authenticate UiPath CLI using Client ID and Client Secret ---
+$uipathCLI = "uipath"
+WriteLog "Using CLI: $uipathCLI"
+
+# Authenticate
 WriteLog "Configuring UiPath CLI authentication..."
-$authParams = New-Object 'Collections.Generic.List[string]'
-$authParams.Add("config")
-$authParams.Add("--auth")
-$authParams.Add("credentials")
-$authParams.Add("--organization")
-$authParams.Add($organization_name)
-$authParams.Add("--tenant")
-$authParams.Add($orchestrator_tenant)
-$authParams.Add("--clientId")
-$authParams.Add($client_id)
-$authParams.Add("--clientSecret")
-$authParams.Add($client_secret)
+$authCmd = @(
+    "config", "--auth", "credentials",
+    "--organization", $organization_name,
+    "--tenant", $orchestrator_tenant,
+    "--clientId", $client_id,
+    "--clientSecret", $client_secret
+)
 if ($orchestrator_url -ne "https://cloud.uipath.com") {
-    # Only add --uri if it's not the default cloud URL
-    $authParams.Add("--uri")
-    $authParams.Add($orchestrator_url)
+    $authCmd += @("--uri", $orchestrator_url)
 }
 
-# Mask client secret for logging
-$authParamsMasked = New-Object 'Collections.Generic.List[string]'
-$authParamsMasked.AddRange($authParams)
-$secretIndex = $authParamsMasked.IndexOf("--clientSecret")
-if ($secretIndex -ge 0) {
-    $authParamsMasked[$secretIndex + 1] = ("*" * 8) # Mask secret
-}
-WriteLog "Executing $uipathCLI $($authParamsMasked -join ' ')"
-
-& "$uipathCLI" $authParams.ToArray()
+& $uipathCLI $authCmd
 if ($LASTEXITCODE -ne 0) {
-    WriteLog "Failed to configure UiPath CLI authentication. Exit code: $LASTEXITCODE" -err
-    exit 1
+    WriteLog "❌ Failed to authenticate with UiPath CLI." -err
+    Exit 1
 }
-WriteLog "UiPath CLI authentication configured successfully."
 
-# --- Building uipath cli parameters for package deployment ---
-$deployParams = New-Object 'Collections.Generic.List[string]'
-$deployParams.Add("orchestrator") # Use 'orchestrator' verb for modern CLI
-$deployParams.Add("packages")
-$deployParams.Add("upload") # Or 'deploy' for older versions, 'upload' is for nupkg files
+WriteLog "✅ UiPath CLI authentication configured."
 
-# Check if packages_path is a directory or a specific .nupkg file
-if (Test-Path -Path $packages_path -PathType Container) {
-    # It's a directory, find all .nupkg files
-    $packageFiles = Get-ChildItem -Path $packages_path -Filter "*.nupkg" -Recurse | Select-Object -ExpandProperty FullName
-    if (-not $packageFiles) {
-        WriteLog "No .nupkg files found in directory: $packages_path" -err
-        exit 1
+# Upload package
+WriteLog "Preparing to upload package..."
+$deployCmd = @("orchestrator", "packages", "upload")
+
+# Determine .nupkg file
+if (Test-Path $packages_path -PathType Container) {
+    $nupkgFile = Get-ChildItem -Path $packages_path -Filter "*.nupkg" -Recurse | Select-Object -First 1
+    if (-not $nupkgFile) {
+        WriteLog "❌ No .nupkg files found in directory." -err
+        Exit 1
     }
-    # For simplicity, let's assume we deploy the first one found or iterate
-    # For typical CI/CD, the build step produces one NUPKG
-    $nupkgToUpload = $packageFiles | Select-Object -First 1
-    WriteLog "Found package to upload: $nupkgToUpload"
-    $deployParams.Add("-file")
-    $deployParams.Add($nupkgToUpload)
-} elseif (Test-Path -Path $packages_path -PathType Leaf -and $packages_path.EndsWith(".nupkg")) {
-    # It's a specific .nupkg file
-    WriteLog "Uploading specific package file: $packages_path"
-    $deployParams.Add("-file")
-    $deployParams.Add($packages_path)
+    $deployCmd += @("-file", $nupkgFile.FullName)
+    WriteLog "Found package: $($nupkgFile.FullName)"
+} elseif (Test-Path $packages_path -PathType Leaf -and $packages_path.EndsWith(".nupkg")) {
+    $deployCmd += @("-file", $packages_path)
+    WriteLog "Using specified package: $packages_path"
 } else {
-    WriteLog "Error: packages_path must be a directory containing .nupkg files or a specific .nupkg file." -err
-    exit 1
+    WriteLog "❌ Invalid packages_path: not a folder or .nupkg file." -err
+    Exit 1
 }
 
-# Add folder/environment if specified
 if ($folder_organization_unit -ne "") {
-    $deployParams.Add("--folder-path") # Use --folder-path for modern folders
-    $deployParams.Add($folder_organization_unit)
-} elseif ($environment_list -ne "") {
-    # For classic environments, if folder_organization_unit is not used
-    WriteLog "Warning: --environment parameter is primarily for classic folders. Consider --folder-path for modern folders."
-    $deployParams.Add("--environment")
-    $deployParams.Add($environment_list)
+    $deployCmd += @("--folder-path", $folder_organization_unit)
 }
 
-if ($language -ne "") {
-    WriteLog "Warning: 'language' parameter might not be directly supported for package upload. Check UiPath CLI documentation."
-    # The CLI doesn't typically have a -l for package upload. This might be for other CLI commands.
-    # $deployParams.Add("-l")
-    # $deployParams.Add($language)
+if ($environment_list -ne "") {
+    WriteLog "⚠️ Using environment_list (for classic folders)."
+    $deployCmd += @("--environment", $environment_list)
 }
 
 if ($disableTelemetry -ne "") {
-    # Most CLI commands accept --telemetry-opt-out
-    $deployParams.Add("--telemetry-opt-out")
+    $deployCmd += @("--telemetry-opt-out")
 }
 
-# Log cli call with parameters (masking sensitive info)
-$deployParamsMasked = New-Object 'Collections.Generic.List[string]'
-$deployParamsMasked.AddRange($deployParams)
-# No sensitive info in deploy command parameters if auth is handled by config command
-
-WriteLog "Executing $uipathCLI $($deployParamsMasked -join ' ')"
-
-# Call uipath cli for package upload
-& "$uipathCLI" $deployParams.ToArray()
+WriteLog "Executing package upload..."
+& $uipathCLI $deployCmd
 
 if ($LASTEXITCODE -eq 0) {
-    WriteLog "Package deployed successfully!"
+    WriteLog "✅ Package uploaded successfully."
     Exit 0
 } else {
-    WriteLog "Unable to deploy project. Exit code $LASTEXITCODE" -err
+    WriteLog "❌ Failed to upload package. Exit code: $LASTEXITCODE" -err
     Exit 1
 }
