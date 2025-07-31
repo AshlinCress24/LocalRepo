@@ -11,12 +11,13 @@ function WriteLog {
     Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $msg"
 }
 
-if ($package_path -eq "" -or $orchestrator_url -eq "" -or $orchestrator_tenant -eq "" -or $account_name -eq "" -or $client_id -eq "" -or $client_secret -eq "") {
+# Validate inputs
+if ($package_path -eq "" -or $orchestrator_url -eq "" -or $orchestrator_tenant -eq "" -or $client_id -eq "" -or $client_secret -eq "") {
     WriteLog "❌ Required parameters missing. Please ensure all are provided."
     exit 1
 }
 
-# Get the .nupkg file
+# Find the .nupkg file
 $nupkg = Get-ChildItem -Path $package_path -Filter *.nupkg | Select-Object -First 1
 if (-not $nupkg) {
     WriteLog "❌ No .nupkg file found in path: $package_path"
@@ -25,14 +26,24 @@ if (-not $nupkg) {
 
 WriteLog "📦 Package found: $($nupkg.FullName)"
 
-# Request OAuth2 token
+# Extract account name from orchestrator_url for scope generation
+if ($orchestrator_url -match "https:\/\/cloud.uipath.com\/([^\/]+)") {
+    $account_name = $matches[1]
+    $scope = "OR.$account_name.$orchestrator_tenant"
+    WriteLog "🔍 Account name extracted: $account_name"
+    WriteLog "🔍 Scope generated: $scope"
+} else {
+    WriteLog "❌ Could not extract account name from Orchestrator URL"
+    exit 1
+}
+
+# Get OAuth2 access token using External App credentials
 $tokenUrl = "$orchestrator_url/identity_/connect/token"
-$scope = "OR.$account_name.$orchestrator_tenant"
 $tokenBody = @{
-    grant_type = "client_credentials"
-    client_id = $client_id
+    grant_type    = "client_credentials"
+    client_id     = $client_id
     client_secret = $client_secret
-    scope = $scope
+    scope         = $scope
 }
 
 WriteLog "🔐 Requesting access token..."
@@ -50,8 +61,8 @@ try {
     exit 1
 }
 
-# Upload package using REST API
-$deployUri = "$orchestrator_url/$account_name/$orchestrator_tenant/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
+# Upload the package using Orchestrator API
+$deployUri = "$orchestrator_url/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
 WriteLog "☁️ Uploading package to: $deployUri"
 
 try {
