@@ -44,7 +44,7 @@ if (-not $package) {
 WriteLog "📦 Found package: $($package.FullName)"
 
 # Construct token URL
-$tokenUrl = "$orchestrator_url$organization_name/$orchestrator_tenant/connect/token"
+$tokenUrl = "$orchestrator_url/identity_/connect/token"
 WriteLog "🔐 Getting token from: $tokenUrl"
 
 # Request token using External App flow
