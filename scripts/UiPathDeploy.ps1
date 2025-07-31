@@ -2,7 +2,6 @@ Param(
     [string] $package_path = "",
     [string] $orchestrator_url = "",
     [string] $orchestrator_tenant = "",
-    [string] $account_name = "",
     [string] $client_id = "",
     [string] $client_secret = ""
 )
