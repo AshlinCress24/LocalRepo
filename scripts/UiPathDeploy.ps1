@@ -11,12 +11,12 @@ function WriteLog {
     Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $msg"
 }
 
-- name: Print Env Variables
-  run: |
-    echo "ORCH_URL=${{ secrets.ORCH_URL }}"
-    echo "ORCH_TENANT=${{ secrets.ORCH_TENANT }}"
-    echo "ORCH_CLIENT_ID=${{ secrets.ORCH_CLIENT_ID }}"
-    echo "ORCH_CLIENT_SECRET=${{ secrets.ORCH_CLIENT_SECRET }}"
+WriteLog "🔎 Parameters received:"
+WriteLog "package_path: $package_path"
+WriteLog "orchestrator_url: $orchestrator_url"
+WriteLog "orchestrator_tenant: $orchestrator_tenant"
+WriteLog "client_id: $client_id"
+WriteLog "client_secret: [hidden]"
 
 # Validate inputs
 if ($package_path -eq "" -or $orchestrator_url -eq "" -or $orchestrator_tenant -eq "" -or $client_id -eq "" -or $client_secret -eq "") {
