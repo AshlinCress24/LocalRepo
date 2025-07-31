@@ -1,150 +1,92 @@
-<#
-.SYNOPSIS
-    Deploy NuGet package files to orchestrator
-
-.DESCRIPTION
-    This script deploys NuGet package files (*.nupkg) to Cloud or On-Prem orchestrator using Client ID and Client Secret authentication.
-
-.PARAMETER packages_path
-    Required. The path to a folder containing packages, or to a package file.
-
-.PARAMETER orchestrator_url
-    Required. The base URL of the Orchestrator instance (e.g., https://cloud.uipath.com).
-
-.PARAMETER organization_name
-    Required. The UiPath Cloud organization name (e.g., noviggptduln).
-
-.PARAMETER orchestrator_tenant
-    Required. The tenant of the Orchestrator instance (e.g., DefaultTenant).
-
-.PARAMETER client_id
-    Required. The Client ID from your Orchestrator External Application.
-
-.PARAMETER client_secret
-    Required. The Client Secret from your Orchestrator External Application.
-
-.PARAMETER folder_organization_unit
-    The Orchestrator folder (modern folder path/name).
-
-.PARAMETER environment_list
-    For classic folders: comma-separated list of environments.
-
-.PARAMETER language
-    The orchestrator language.
-
-.PARAMETER disableTelemetry
-    Disable telemetry data.
-#>
-
-Param (
-    [string] $packages_path = $env:UIPATH_PACKAGE_PATH,
-    [string] $orchestrator_url = $env:UIPATH_ORCH_URL,
-    [string] $organization_name = $env:UIPATH_ORCH_ORG_NAME,
-    [string] $orchestrator_tenant = $env:UIPATH_ORCH_TENANT_NAME,
-    [string] $client_id = $env:UIPATH_CLIENT_ID,
-    [string] $client_secret = $env:UIPATH_CLIENT_SECRET,
-    [string] $folder_organization_unit = $env:UIPATH_FOLDER_NAME,
-    [string] $language = "",
-    [string] $environment_list = "",
-    [string] $disableTelemetry = ""
+param (
+    [string] $package_path = "$env:GITHUB_WORKSPACE\package",
+    [string] $orchestrator_url = $env:ORCH_URL,
+    [string] $organization_name = $env:ORCH_ORGANIZATION_NAME,
+    [string] $orchestrator_tenant = $env:ORCH_TENANT,
+    [string] $client_id = $env:ORCH_CLIENT_ID,
+    [string] $client_secret = $env:ORCH_CLIENT_SECRET,
+    [string] $folder_organization_unit = $env:ORCH_DEV_FOLDER_PATH
 )
 
 function WriteLog {
-    Param ($message, [switch] $err)
-    $now = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    if ($err) {
-        Write-Host "$now - ❌ $message" -ForegroundColor Red
+    param ([string]$message)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Write-Output "$timestamp - $message"
+}
+
+WriteLog "🔎 Parameters received:"
+WriteLog "🔎 package_path: $package_path"
+WriteLog "🔎 orchestrator_url: $orchestrator_url"
+WriteLog "🔎 organization_name: $organization_name"
+WriteLog "🔎 orchestrator_tenant: $orchestrator_tenant"
+WriteLog "🔎 client_id: $client_id"
+WriteLog "🔎 client_secret: [hidden]"
+WriteLog "🔎 folder_organization_unit: $folder_organization_unit"
+
+# Validate all inputs
+if (-not $package_path -or -not $orchestrator_url -or -not $organization_name -or -not $orchestrator_tenant -or -not $client_id -or -not $client_secret -or -not $folder_organization_unit) {
+    WriteLog "❌ ❌ Required parameters missing. Please ensure all are provided."
+    exit 1
+}
+
+# Get the .nupkg file
+$nupkg = Get-ChildItem -Path $package_path -Filter *.nupkg | Select-Object -First 1
+if (-not $nupkg) {
+    WriteLog "❌ No .nupkg file found in package path: $package_path"
+    exit 1
+}
+WriteLog "📦 Found package: $($nupkg.FullName)"
+
+# Get Auth Token
+$authBody = @{
+    grant_type    = "client_credentials"
+    client_id     = $client_id
+    client_secret = $client_secret
+    scope         = "OR.Platform"
+}
+
+$tokenUrl = "$orchestrator_url$organization_name/$orchestrator_tenant/connect/token"
+WriteLog "🔐 Getting token from: $tokenUrl"
+
+try {
+    $authResponse = Invoke-RestMethod -Uri $tokenUrl -Method Post -Body $authBody -ContentType "application/x-www-form-urlencoded"
+} catch {
+    WriteLog "❌ Failed to get token: $($_.Exception.Message)"
+    exit 1
+}
+
+$accessToken = $authResponse.access_token
+if (-not $accessToken) {
+    WriteLog "❌ Failed to retrieve access token"
+    exit 1
+}
+WriteLog "✅ Access token retrieved"
+
+# Upload Package
+$deployUri = "$orchestrator_url$organization_name/$orchestrator_tenant/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
+WriteLog "🚀 Uploading package to: $deployUri"
+
+try {
+    $multipartContent = [System.Net.Http.MultipartFormDataContent]::new()
+    $fileContent = [System.IO.File]::ReadAllBytes($nupkg.FullName)
+    $byteArrayContent = [System.Net.Http.ByteArrayContent]::new($fileContent)
+    $byteArrayContent.Headers.Add("Content-Type", "application/octet-stream")
+    $multipartContent.Add($byteArrayContent, "file", $nupkg.Name)
+
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    $client = New-Object System.Net.Http.HttpClient($handler)
+    $client.DefaultRequestHeaders.Authorization = "Bearer $accessToken"
+
+    $response = $client.PostAsync($deployUri, $multipartContent).Result
+
+    if ($response.IsSuccessStatusCode) {
+        WriteLog "✅ Package uploaded successfully."
     } else {
-        Write-Host "$now - 🔎 $message"
+        $respContent = $response.Content.ReadAsStringAsync().Result
+        WriteLog "❌ Upload failed: $($response.StatusCode) - $respContent"
+        exit 1
     }
-}
-
-WriteLog "Parameters received:"
-WriteLog "package_path: $packages_path"
-WriteLog "orchestrator_url: $orchestrator_url"
-WriteLog "organization_name: $organization_name"
-WriteLog "orchestrator_tenant: $orchestrator_tenant"
-WriteLog "client_id: $client_id"
-WriteLog "client_secret: [hidden]"
-WriteLog "folder_organization_unit: $folder_organization_unit"
-
-if (
-    [string]::IsNullOrWhiteSpace($packages_path) -or
-    [string]::IsNullOrWhiteSpace($orchestrator_url) -or
-    [string]::IsNullOrWhiteSpace($organization_name) -or
-    [string]::IsNullOrWhiteSpace($orchestrator_tenant) -or
-    [string]::IsNullOrWhiteSpace($client_id) -or
-    [string]::IsNullOrWhiteSpace($client_secret)
-) {
-    WriteLog "❌ Required parameters missing. Please ensure all are provided." -err
-    Exit 1
-}
-
-$uipathCLI = "uipath"
-WriteLog "Using CLI: $uipathCLI"
-
-# Authenticate
-WriteLog "Configuring UiPath CLI authentication..."
-$authCmd = @(
-    "config", "--auth", "credentials",
-    "--organization", $organization_name,
-    "--tenant", $orchestrator_tenant,
-    "--clientId", $client_id,
-    "--clientSecret", $client_secret
-)
-if ($orchestrator_url -ne "https://cloud.uipath.com") {
-    $authCmd += @("--uri", $orchestrator_url)
-}
-
-& $uipathCLI $authCmd
-if ($LASTEXITCODE -ne 0) {
-    WriteLog "❌ Failed to authenticate with UiPath CLI." -err
-    Exit 1
-}
-
-WriteLog "✅ UiPath CLI authentication configured."
-
-# Upload package
-WriteLog "Preparing to upload package..."
-$deployCmd = @("orchestrator", "packages", "upload")
-
-# Determine .nupkg file
-if (Test-Path $packages_path -PathType Container) {
-    $nupkgFile = Get-ChildItem -Path $packages_path -Filter "*.nupkg" -Recurse | Select-Object -First 1
-    if (-not $nupkgFile) {
-        WriteLog "❌ No .nupkg files found in directory." -err
-        Exit 1
-    }
-    $deployCmd += @("-file", $nupkgFile.FullName)
-    WriteLog "Found package: $($nupkgFile.FullName)"
-} elseif (Test-Path $packages_path -PathType Leaf -and $packages_path.EndsWith(".nupkg")) {
-    $deployCmd += @("-file", $packages_path)
-    WriteLog "Using specified package: $packages_path"
-} else {
-    WriteLog "❌ Invalid packages_path: not a folder or .nupkg file." -err
-    Exit 1
-}
-
-if ($folder_organization_unit -ne "") {
-    $deployCmd += @("--folder-path", $folder_organization_unit)
-}
-
-if ($environment_list -ne "") {
-    WriteLog "⚠️ Using environment_list (for classic folders)."
-    $deployCmd += @("--environment", $environment_list)
-}
-
-if ($disableTelemetry -ne "") {
-    $deployCmd += @("--telemetry-opt-out")
-}
-
-WriteLog "Executing package upload..."
-& $uipathCLI $deployCmd
-
-if ($LASTEXITCODE -eq 0) {
-    WriteLog "✅ Package uploaded successfully."
-    Exit 0
-} else {
-    WriteLog "❌ Failed to upload package. Exit code: $LASTEXITCODE" -err
-    Exit 1
+} catch {
+    WriteLog "❌ Exception during upload: $($_.Exception.Message)"
+    exit 1
 }
