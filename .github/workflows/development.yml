@@ -14,6 +14,7 @@ env:
   ORCH_CLIENT_ID: ${{ secrets.ORCH_CLIENT_ID }}
   ORCH_CLIENT_SECRET: ${{ secrets.ORCH_CLIENT_SECRET }}
   ORCH_DEV_FOLDER_PATH: Shared
+  ORCH_ORGANIZATION_NAME: ${{ secrets.ORCH_ORGANIZATION_NAME }}
   CLI_URL: https://uipath.visualstudio.com/Public.Feeds/_artifacts/feed/UiPath-Official/NuGet/UiPath.CLI.Windows/overview/25.4.9337.28376
 
 jobs:
@@ -34,6 +35,7 @@ jobs:
           echo "ORCH_TENANT: ${{ secrets.ORCH_TENANT }}"
           echo "ORCH_CLIENT_ID: ${{ secrets.ORCH_CLIENT_ID }}"
           echo "ORCH_CLIENT_SECRET: ${{ secrets.ORCH_CLIENT_SECRET }}"
+          echo "ORCH_ORGANIZATION_NAME: ${{ secrets.ORCH_ORGANIZATION_NAME }}"
   cleaner:
     runs-on: ubuntu-latest
     steps:
