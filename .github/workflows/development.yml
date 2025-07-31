@@ -55,3 +55,23 @@ jobs:
           path: |
            package/*.*
            scripts/*.ps1
+
+  publish-uipath-nuget-package:
+    needs: build-uipath-nuget-package
+    runs-on: windows-latest
+    steps: 
+      - name: Download UiPath Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Artifacts
+
+      - name: Publish Nuget Package to DEV
+        shell: pwsh
+        run: |
+          ${{ github.workspace }}\scripts\UiPathDeploy.ps1 `
+            -package_path "${{ github.workspace }}\package" `
+            -orchestrator_url "${{ env.ORCH_URL }}" `
+            -orchestrator_tenant "${{ env.ORCH_TENANT }}" `
+            -account_name "${{ env.ORCH_ACC_NAME }}" `
+            -client_id "${{ env.ORCH_CLIENT_ID }}" `
+            -client_secret "${{ env.ORCH_CLIENT_SECRET }}"
