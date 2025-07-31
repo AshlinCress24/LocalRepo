@@ -37,7 +37,7 @@ if (-not $nupkg) {
 }
 WriteLog "📦 Found package: $($nupkg.FullName)"
 
-# Get Auth Token
+# Get Auth Token - External App Auth Flow
 $authBody = @{
     grant_type    = "client_credentials"
     client_id     = $client_id
@@ -45,7 +45,7 @@ $authBody = @{
     scope         = "OR.Platform"
 }
 
-$tokenUrl = "$orchestrator_url$organization_name/$orchestrator_tenant/connect/token"
+$tokenUrl = "https://cloud.uipath.com/identity_/connect/token"
 WriteLog "🔐 Getting token from: $tokenUrl"
 
 try {
