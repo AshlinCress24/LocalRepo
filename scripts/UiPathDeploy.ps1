@@ -1,5 +1,5 @@
 param (
-    [string] $package_path = "$env:GITHUB_WORKSPACE\package",
+    [string] $package_path = "$PSScriptRoot\..\package",
     [string] $orchestrator_url = $env:ORCH_URL,
     [string] $organization_name = $env:ORCH_ORGANIZATION_NAME,
     [string] $orchestrator_tenant = $env:ORCH_TENANT,
@@ -9,9 +9,8 @@ param (
 )
 
 function WriteLog {
-    param ([string]$message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Write-Output "$timestamp - $message"
+    param([string]$message)
+    Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - $message"
 }
 
 WriteLog "🔎 Parameters received:"
@@ -23,21 +22,32 @@ WriteLog "🔎 client_id: $client_id"
 WriteLog "🔎 client_secret: [hidden]"
 WriteLog "🔎 folder_organization_unit: $folder_organization_unit"
 
-# Validate all inputs
-if (-not $package_path -or -not $orchestrator_url -or -not $organization_name -or -not $orchestrator_tenant -or -not $client_id -or -not $client_secret -or -not $folder_organization_unit) {
+# Validate required parameters
+if ([string]::IsNullOrWhiteSpace($package_path) -or
+    [string]::IsNullOrWhiteSpace($orchestrator_url) -or
+    [string]::IsNullOrWhiteSpace($organization_name) -or
+    [string]::IsNullOrWhiteSpace($orchestrator_tenant) -or
+    [string]::IsNullOrWhiteSpace($client_id) -or
+    [string]::IsNullOrWhiteSpace($client_secret) -or
+    [string]::IsNullOrWhiteSpace($folder_organization_unit)) {
+    
     WriteLog "❌ ❌ Required parameters missing. Please ensure all are provided."
     exit 1
 }
 
-# Get the .nupkg file
-$nupkg = Get-ChildItem -Path $package_path -Filter *.nupkg | Select-Object -First 1
-if (-not $nupkg) {
-    WriteLog "❌ No .nupkg file found in package path: $package_path"
+# Find the .nupkg file
+$package = Get-ChildItem -Path $package_path -Filter *.nupkg | Select-Object -First 1
+if (-not $package) {
+    WriteLog "❌ No .nupkg package found in $package_path"
     exit 1
 }
-WriteLog "📦 Found package: $($nupkg.FullName)"
+WriteLog "📦 Found package: $($package.FullName)"
 
-# Get Auth Token - External App Auth Flow
+# Construct token URL
+$tokenUrl = "$orchestrator_url$organization_name/$orchestrator_tenant/connect/token"
+WriteLog "🔐 Getting token from: $tokenUrl"
+
+# Request token using External App flow
 $authBody = @{
     grant_type    = "client_credentials"
     client_id     = $client_id
@@ -45,48 +55,30 @@ $authBody = @{
     scope         = "OR.Platform"
 }
 
-$tokenUrl = "https://cloud.uipath.com/identity_/connect/token"
-WriteLog "🔐 Getting token from: $tokenUrl"
-
 try {
-    $authResponse = Invoke-RestMethod -Uri $tokenUrl -Method Post -Body $authBody -ContentType "application/x-www-form-urlencoded"
+    $response = Invoke-RestMethod -Method Post -Uri $tokenUrl -Body $authBody -ContentType "application/x-www-form-urlencoded"
+    $access_token = $response.access_token
+    WriteLog "✅ Token acquired successfully"
 } catch {
-    WriteLog "❌ Failed to get token: $($_.Exception.Message)"
+    WriteLog "❌ Failed to get token: $_"
     exit 1
 }
 
-$accessToken = $authResponse.access_token
-if (-not $accessToken) {
-    WriteLog "❌ Failed to retrieve access token"
-    exit 1
-}
-WriteLog "✅ Access token retrieved"
-
-# Upload Package
+# Upload the package to Orchestrator
 $deployUri = "$orchestrator_url$organization_name/$orchestrator_tenant/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
-WriteLog "🚀 Uploading package to: $deployUri"
+WriteLog "⬆️ Uploading package to: $deployUri"
 
 try {
-    $multipartContent = [System.Net.Http.MultipartFormDataContent]::new()
-    $fileContent = [System.IO.File]::ReadAllBytes($nupkg.FullName)
-    $byteArrayContent = [System.Net.Http.ByteArrayContent]::new($fileContent)
-    $byteArrayContent.Headers.Add("Content-Type", "application/octet-stream")
-    $multipartContent.Add($byteArrayContent, "file", $nupkg.Name)
-
-    $handler = New-Object System.Net.Http.HttpClientHandler
-    $client = New-Object System.Net.Http.HttpClient($handler)
-    $client.DefaultRequestHeaders.Authorization = "Bearer $accessToken"
-
-    $response = $client.PostAsync($deployUri, $multipartContent).Result
-
-    if ($response.IsSuccessStatusCode) {
-        WriteLog "✅ Package uploaded successfully."
-    } else {
-        $respContent = $response.Content.ReadAsStringAsync().Result
-        WriteLog "❌ Upload failed: $($response.StatusCode) - $respContent"
-        exit 1
+    $form = @{
+        file = Get-Item $package.FullName
     }
+
+    $uploadResponse = Invoke-RestMethod -Method Post -Uri $deployUri `
+        -Headers @{ Authorization = "Bearer $access_token" } `
+        -Form $form
+
+    WriteLog "✅ Package deployed successfully"
 } catch {
-    WriteLog "❌ Exception during upload: $($_.Exception.Message)"
+    WriteLog "❌ Failed to deploy package: $_"
     exit 1
 }
