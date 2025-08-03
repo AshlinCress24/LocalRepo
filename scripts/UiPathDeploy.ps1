@@ -64,15 +64,13 @@ try {
     $access_token = $response.access_token
     WriteLog "✅ Token acquired successfully"
 } catch {
-    if ($_.Exception.Response -ne $null) {
-        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-        $body = $reader.ReadToEnd()
-        WriteLog "❌ Token error details: $body"
-    } else {
-        WriteLog "❌ Unknown token error: $_"
+    WriteLog "❌ Token error (raw): $($_.ToString())"
+    if ($_.ErrorDetails -ne $null) {
+        WriteLog "❌ ErrorDetails.Message: $($_.ErrorDetails.Message)"
     }
     exit 1
 }
+
 
 # Upload the package to Orchestrator
 $deployUri = "$orchestrator_url/$organization_name/$orchestrator_tenant/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
