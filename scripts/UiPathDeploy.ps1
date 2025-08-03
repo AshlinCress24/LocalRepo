@@ -52,7 +52,7 @@ $authBody = @{
     grant_type    = "client_credentials"
     client_id     = $client_id
     client_secret = $client_secret
-    scope         = "OR.Platform"
+    scope         = "OR.Folders.Read OR.Execution.Write OR.Jobs.Write OR.Jobs.Read"
 }
 
 try {
@@ -65,7 +65,7 @@ try {
 }
 
 # Upload the package to Orchestrator
-$deployUri = "$orchestrator_url$organization_name/$orchestrator_tenant/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
+$deployUri = "$orchestrator_url/$organization_name/$orchestrator_tenant/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage"
 WriteLog "⬆️ Uploading package to: $deployUri"
 
 try {
