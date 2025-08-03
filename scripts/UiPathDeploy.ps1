@@ -64,7 +64,13 @@ try {
     $access_token = $response.access_token
     WriteLog "✅ Token acquired successfully"
 } catch {
-    WriteLog "❌ Failed to get token: $_"
+    if ($_.Exception.Response -ne $null) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        $body = $reader.ReadToEnd()
+        WriteLog "❌ Token error details: $body"
+    } else {
+        WriteLog "❌ Unknown token error: $_"
+    }
     exit 1
 }
 
