@@ -21,6 +21,9 @@ WriteLog "🔎 orchestrator_tenant: $orchestrator_tenant"
 WriteLog "🔎 client_id: $client_id"
 WriteLog "🔎 client_secret: [hidden]"
 WriteLog "🔎 folder_organization_unit: $folder_organization_unit"
+WriteLog "client_id length: $($client_id.Length)"
+WriteLog "client_secret length: $($client_secret.Length)"
+
 
 # Validate required parameters
 if ([string]::IsNullOrWhiteSpace($package_path) -or
@@ -44,6 +47,7 @@ if (-not $package) {
 WriteLog "📦 Found package: $($package.FullName)"
 
 # Construct token URL
+$orchestrator_url = $orchestrator_url.TrimEnd('/')
 $tokenUrl = "$orchestrator_url/identity_/connect/token"
 WriteLog "🔐 Getting token from: $tokenUrl"
 
@@ -52,7 +56,7 @@ $authBody = @{
     grant_type    = "client_credentials"
     client_id     = $client_id
     client_secret = $client_secret
-    scope         = "OR.Folders.Read OR.Execution.Write OR.Jobs.Write OR.Jobs.Read"
+    scope         = "OR.*"
 }
 
 try {
